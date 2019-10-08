@@ -1,0 +1,19 @@
+[package]
+name = "instinct"
+version = "0.1.0"
+authors = ["devfans <stefanliu@outlook.com>"]
+edition = "2018"
+description = "Sorting of polygons, lines and points in 3D world projection"
+exclude = ["examples/*"]
+keywords = ["engine", "3d", "visualization"]
+categories = ["visualization", "game-engines"]
+
+repository = "https://github.com/devfans/instinct"
+
+readme = "README.md"
+license = "GPL-3.0-or-later"
+
+
+[dependencies]
+nalgebra = "0.18.0"
+
