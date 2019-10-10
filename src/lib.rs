@@ -1,6 +1,11 @@
 use nalgebra::{self as na, *};
 use std::cmp::{PartialOrd, Ordering};
 
+pub type Line<N> = (Point3<N>, Point3<N>);
+pub type LineRef<'a, N> = (&'a Point3<N>, &'a Point3<N>);
+pub type Plane<N> = (Point3<N>, Point3<N>, Point3<N>);
+pub type PlaneRef<'a, N> = (&'a Point3<N>, &'a Point3<N>, &'a Point3<N>);
+
 pub trait InstinctUtils {
     // fn avg(&self, other: &Self) -> Self;
     fn instinct_eq(&self, other: &Self) -> bool;
@@ -15,7 +20,7 @@ pub trait InstinctUtils {
     fn instinct_ndelta_ord(&self) -> Ordering;
 }
 
-impl<N: RealField> InstinctUtils for N {
+impl<'a, N: RealField> InstinctUtils for N {
     fn instinct_eq(&self, other: &Self) -> bool {
         (*self - *other).abs() <= N::default_max_relative()
     }
@@ -241,9 +246,32 @@ macro_rules! sort_point_and_line {
     } 
 }
 
+/// Get norm vector of two lines
+macro_rules! get_lines_norm {
+    ($a: expr, $b: expr, $c: expr, $d: expr) => {
+        {
+            let d1 = $b.coords - $a.coords;
+            let d2 = $d.coords - $c.coords;
+            let (s, t) = closest_points_line_line_parameters($a, &d1, $c, &d2);
+            let p1 = $a + d1*s;
+            let p2 = $c + d2*t;
+            p2.coords - p1.coords
+        }
+    };
+    ($a: expr, $b: expr) => {
+        get_lines_norm!($a.0, $a.1, $b.0, $b.1)
+    }
+}
+
+/// Get norm vector of two planes
+macro_rules! get_planes_norm {
+    () => {}
+}
+ 
+
 //--------------------------------
 /// Compare two Point3
-impl<N: RealField> InstinctOrd<Self> for Point3<N> {
+impl<'a, N: RealField> InstinctOrd<Self> for Point3<N> {
     fn instinct_cmp(&self, other: &Self) -> Ordering {
         // self.z.instinct_ord(&other.z)
         sort_points!(self, other)
@@ -259,8 +287,8 @@ impl<N: RealField> InstinctOrd<Self> for Point3<N> {
 /// Compare Point3 with a line linked by two points
 ///
 /// It's comparing the point and the plane represented by the projection of the line on Z-Y plane
-impl<N: RealField> InstinctOrd<(&Point3<N>, &Point3<N>)> for Point3<N> {
-    fn instinct_cmp(&self, other: &(&Point3<N>, &Point3<N>)) -> Ordering {
+impl<'a, N: RealField> InstinctOrd<LineRef<'a, N>> for Point3<N> {
+    fn instinct_cmp(&self, other: &LineRef<'a, N>) -> Ordering {
         if other.0.z.instinct_eq(&other.1.z) {
             // verticle with z - axis
             sort_points!(self, &other.0)
@@ -289,7 +317,7 @@ impl<N: RealField> InstinctOrd<(&Point3<N>, &Point3<N>)> for Point3<N> {
             sort_point_and_line!(self, other)
         }
     }
-    fn instinct_cmp_ext(&self, other: &(&Point3<N>, &Point3<N>)) -> Option<Ordering> {
+    fn instinct_cmp_ext(&self, other: &LineRef<'a, N>) -> Option<Ordering> {
         // Same point
         if same_point!(&other.0, &other.1) {
            return Some(sort_points!(self, &other.0));
@@ -309,11 +337,11 @@ impl<N: RealField> InstinctOrd<(&Point3<N>, &Point3<N>)> for Point3<N> {
     }
 }
 
-impl<N: RealField> InstinctOrd<(Point3<N>, Point3<N>)> for Point3<N> {
-    fn instinct_cmp(&self, other: &(Point3<N>, Point3<N>)) -> Ordering {
+impl<'a, N: RealField> InstinctOrd<Line<N>> for Point3<N> {
+    fn instinct_cmp(&self, other: &Line<N>) -> Ordering {
         self.instinct_cmp(&(&other.0, &other.1))
     }
-    fn instinct_cmp_ext(&self, other: &(Point3<N>, Point3<N>)) -> Option<Ordering> {
+    fn instinct_cmp_ext(&self, other: &Line<N>) -> Option<Ordering> {
         self.instinct_cmp_ext(&(&other.0, &other.1))
     }
 }
@@ -321,8 +349,8 @@ impl<N: RealField> InstinctOrd<(Point3<N>, Point3<N>)> for Point3<N> {
 
 //--------------------------------
 /// Compare point and a plane linked by three points
-impl<N: RealField> InstinctOrd<(&Point3<N>, &Point3<N>, &Point3<N>)> for Point3<N> {
-    fn instinct_cmp(&self, other: &(&Point3<N>, &Point3<N>, &Point3<N>)) -> Ordering {
+impl<'a, N: RealField> InstinctOrd<PlaneRef<'a, N>> for Point3<N> {
+    fn instinct_cmp(&self, other: &PlaneRef<'a, N>) -> Ordering {
         let v = self.z;
         let min = other.0.z.min(other.1.z).min(other.2.z);
         let max = other.0.z.max(other.1.z).max(other.2.z);
@@ -354,7 +382,7 @@ impl<N: RealField> InstinctOrd<(&Point3<N>, &Point3<N>, &Point3<N>)> for Point3<
         }
 
     }
-    fn instinct_cmp_ext(&self, other: &(&Point3<N>, &Point3<N>, &Point3<N>)) -> Option<Ordering> {
+    fn instinct_cmp_ext(&self, other: &PlaneRef<'a, N>) -> Option<Ordering> {
         if !is_plane!(other) {
             let line = sort_line_points!(other);
             return self.instinct_cmp_ext(&(line[0], line[2]));
@@ -380,11 +408,11 @@ impl<N: RealField> InstinctOrd<(&Point3<N>, &Point3<N>, &Point3<N>)> for Point3<
     }
 }
 
-impl<N: RealField> InstinctOrd<(Point3<N>, Point3<N>, Point3<N>)> for Point3<N> {
-    fn instinct_cmp(&self, other: &(Point3<N>, Point3<N>, Point3<N>)) -> Ordering {
+impl<'a, N: RealField> InstinctOrd<Plane<N>> for Point3<N> {
+    fn instinct_cmp(&self, other: &Plane<N>) -> Ordering {
         self.instinct_cmp(&(&other.0, &other.1, &other.2))
     }
-    fn instinct_cmp_ext(&self, other: &(Point3<N>, Point3<N>, Point3<N>)) -> Option<Ordering> {
+    fn instinct_cmp_ext(&self, other: &Plane<N>) -> Option<Ordering> {
         self.instinct_cmp_ext(&(&other.0, &other.1, &other.2))
     }
 }
@@ -401,7 +429,7 @@ macro_rules! reverse_cmp_ext {
 
 //--------------------------------
 /// Compare line linked by two points and a point
-impl<N: RealField> InstinctOrd<Point3<N>> for (Point3<N>, Point3<N>) {
+impl<'a, N: RealField> InstinctOrd<Point3<N>> for Line<N> {
     fn instinct_cmp(&self, other: &Point3<N>) -> Ordering {
         other.instinct_cmp(self).reverse()
     }
@@ -410,7 +438,7 @@ impl<N: RealField> InstinctOrd<Point3<N>> for (Point3<N>, Point3<N>) {
     }
 }
 
-impl<N: RealField> InstinctOrd<Point3<N>> for (&Point3<N>, &Point3<N>) {
+impl<'a, N: RealField> InstinctOrd<Point3<N>> for LineRef<'a, N> {
     fn instinct_cmp(&self, other: &Point3<N>) -> Ordering {
         other.instinct_cmp(self).reverse()
     }
@@ -421,8 +449,8 @@ impl<N: RealField> InstinctOrd<Point3<N>> for (&Point3<N>, &Point3<N>) {
 
 //--------------------------------
 /// Compare two lines linked by two points for each
-impl<N: RealField> InstinctOrd<(&Point3<N>, &Point3<N>)> for (&Point3<N>, &Point3<N>) {
-    fn instinct_cmp(&self, other: &(&Point3<N>, &Point3<N>)) -> Ordering {
+impl<'a, N: RealField> InstinctOrd<LineRef<'a, N>> for LineRef<'a, N> {
+    fn instinct_cmp(&self, other: &LineRef<'a, N>) -> Ordering {
         let v_min = self.0.z.min(self.1.z);
         let v_max = self.0.z.max(self.1.z);
         let min = other.0.z.min(other.1.z);
@@ -435,17 +463,25 @@ impl<N: RealField> InstinctOrd<(&Point3<N>, &Point3<N>)> for (&Point3<N>, &Point
         }
         
         if same_point!(self.0, self.1) {
-            return self.0.instinct_cmp(other)
+            return self.0.instinct_cmp(other);
         } else if same_point!(other.0, other.1) {
             return other.0.instinct_cmp(self).reverse();
         }
 
-        if is_plane!(self.0, other.0, other.1) {
-        } else {
+        let o_0 = sort_point_and_line!(self.0, other);
+        let o_1 = sort_point_and_line!(self.1, other);
+
+        if point_in_line!(self.0, other) || o_0 == Ordering::Equal {
             self.1.instinct_cmp(other)
+        } else if point_in_line!(self.1, other) || o_1 == Ordering::Equal {
+            self.0.instinct_cmp(other)
+        } else if o_0 == o_1 {
+            o_0
+        } else {
+            get_lines_norm!(self, other).z.instinct_delta_ord().reverse()
         }
     }
-    fn instinct_cmp_ext(&self, other: &(&Point3<N>, &Point3<N>)) -> Option<Ordering> {
+    fn instinct_cmp_ext(&self, other: &LineRef<'a, N>) -> Option<Ordering> {
         if same_point!(self.0, self.1) {
             self.0.instinct_cmp_ext(other)
         } else if same_point!(other.0, other.1) {
@@ -456,99 +492,199 @@ impl<N: RealField> InstinctOrd<(&Point3<N>, &Point3<N>)> for (&Point3<N>, &Point
             } else {
                 self.0.instinct_cmp_ext(other)
             }
-        } else if self.0.z.instinct_eq(&self.1.z) && other.0.z.instinct_eq(&other.1.z) {
-            // Share same xy plane
-            self.0.instinct_cmp_ext(other.0)
         } else {
-            None
+            let norm = get_lines_norm!(self, other);
+            if norm.z.instinct_zero() {
+                if norm.norm().instinct_zero() {
+                    None
+                } else {
+                    Some(Ordering::Equal)
+                }
+            } else if norm.z.is_negative() {
+                Some(Ordering::Greater)
+            } else {
+                Some(Ordering::Less)
+            }
         }
     }
 }
 
-impl<N: RealField> InstinctOrd<(&Point3<N>, &Point3<N>)> for (Point3<N>, Point3<N>) {
-    fn instinct_cmp(&self, other: &(&Point3<N>, &Point3<N>)) -> Ordering {
+impl<'a, N: RealField> InstinctOrd<LineRef<'a, N>> for Line<N> {
+    fn instinct_cmp(&self, other: &LineRef<'a, N>) -> Ordering {
         (&self.0, &self.1).instinct_cmp(other)
     }
-    fn instinct_cmp_ext(&self, other: &(&Point3<N>, &Point3<N>)) -> Option<Ordering> {
+    fn instinct_cmp_ext(&self, other: &LineRef<'a, N>) -> Option<Ordering> {
         (&self.0, &self.1).instinct_cmp_ext(other)
     }
 }
 
-impl<N: RealField> InstinctOrd<(Point3<N>, Point3<N>)> for (Point3<N>, Point3<N>) {
-    fn instinct_cmp(&self, other: &(Point3<N>, Point3<N>)) -> Ordering {
+impl<'a, N: RealField> InstinctOrd<Line<N>> for Line<N> {
+    fn instinct_cmp(&self, other: &Line<N>) -> Ordering {
         (&self.0, &self.1).instinct_cmp(&(&other.0, &other.1))
     }
-    fn instinct_cmp_ext(&self, other: &(Point3<N>, Point3<N>)) -> Option<Ordering> {
+    fn instinct_cmp_ext(&self, other: &Line<N>) -> Option<Ordering> {
         (&self.0, &self.1).instinct_cmp_ext(&(&other.0, &other.1))
     }
 }
 
-impl<N: RealField> InstinctOrd<(Point3<N>, Point3<N>)> for (&Point3<N>, &Point3<N>) {
-    fn instinct_cmp(&self, other: &(Point3<N>, Point3<N>)) -> Ordering {
+impl<'a, N: RealField> InstinctOrd<Line<N>> for LineRef<'a, N> {
+    fn instinct_cmp(&self, other: &Line<N>) -> Ordering {
         self.instinct_cmp(&(&other.0, &other.1))
     }
-    fn instinct_cmp_ext(&self, other: &(Point3<N>, Point3<N>)) -> Option<Ordering> {
+    fn instinct_cmp_ext(&self, other: &Line<N>) -> Option<Ordering> {
         self.instinct_cmp_ext(&(&other.0, &other.1))
     }
 }
 
-/*
 //--------------------------------
-/// Compare line linked by two points and a point
-impl<N: RealField> InstinctOrd<Point3<N>> for (Point3<N>, Point3<N>, Point3<N>) {
-    fn instinct_cmp(&self, other: &Point3<N>) -> Option<Ordering> {
+/// Compare a line and a plane
+impl<'a, N: RealField> InstinctOrd<PlaneRef<'a, N>> for LineRef<'a, N> {
+    fn instinct_cmp(&self, other: &PlaneRef<'a, N>) -> Ordering {
+    }
+    fn instinct_cmp_ext(&self, other: &PlaneRef<'a, N>) -> Option<Ordering> {
+    }
+}
+ 
+//--------------------------------
+/// Compare two planes
+impl<'a, N: RealField> InstinctOrd<PlaneRef<'a, N>> for PlaneRef<'a, N> {
+    fn instinct_cmp(&self, other: &PlaneRef<'a, N>) -> Ordering {
+    }
+    fn instinct_cmp_ext(&self, other: &PlaneRef<'a, N>) -> Option<Ordering> {
+        if !is_plane!(self) {
+        }
     }
 }
 
-impl<N: RealField> InstinctOrd<Point3<N>> for (&Point3<N>, &Point3<N>, &Point3<N>) {
-    fn instinct_cmp(&self, other: &Point3<N>) -> Option<Ordering> {
+
+//--------------------Utils borrowed from ncollide
+
+/// Closest points between two lines.
+///
+/// The result, say `res`, is such that the closest points between both lines are
+/// `orig1 + dir1 * res.0` and `orig2 + dir2 * res.1`.
+#[inline]
+pub fn closest_points_line_line_parameters<N: RealField>(
+    orig1: &Point3<N>,
+    dir1: &Vector3<N>,
+    orig2: &Point3<N>,
+    dir2: &Vector3<N>,
+) -> (N, N) {
+    let res =
+        closest_points_line_line_parameters_eps(orig1, dir1, orig2, dir2, N::default_epsilon());
+    (res.0, res.1)
+}
+
+/// Closest points between two lines with a custom tolerance epsilon.
+///
+/// The result, say `res`, is such that the closest points between both lines are
+/// `orig1 + dir1 * res.0` and `orig2 + dir2 * res.1`. If the lines are parallel
+/// then `res.2` is set to `true` and the returned closest points are `orig1` and
+/// its projection on the second line.
+#[inline]
+pub fn closest_points_line_line_parameters_eps<N: RealField>(
+    orig1: &Point3<N>,
+    dir1: &Vector3<N>,
+    orig2: &Point3<N>,
+    dir2: &Vector3<N>,
+    eps: N,
+) -> (N, N, bool) {
+    // Inspired by RealField-time collision detection by Christer Ericson.
+    let r = *orig1 - *orig2;
+
+    let a = dir1.norm_squared();
+    let e = dir2.norm_squared();
+    let f = dir2.dot(&r);
+
+    let _0: N = na::zero();
+    let _1: N = na::one();
+
+    if a <= eps && e <= eps {
+        (_0, _0, false)
+    } else if a <= eps {
+        (_0, f / e, false)
+    } else {
+        let c = dir1.dot(&r);
+        if e <= eps {
+            (-c / a, _0, false)
+        } else {
+            let b = dir1.dot(dir2);
+            let ae = a * e;
+            let bb = b * b;
+            let denom = ae - bb;
+
+            // Use absolute and ulps error to test collinearity.
+            // let parallel = denom <= eps || ulps_eq!(ae, bb);
+            let parallel = denom <= eps;
+
+            let s = if !parallel {
+                (b * f - c * e) / denom
+            } else {
+                _0
+            };
+
+            (s, (b * s + f) / e, parallel)
+        }
     }
 }
-*/
+
+// FIXME: can we re-used this for the segment/segment case?
+/// Closest points between two segments.
+#[inline]
+pub fn closest_points_line_line<N: RealField>(
+    orig1: &Point3<N>,
+    dir1: &Vector3<N>,
+    orig2: &Point3<N>,
+    dir2: &Vector3<N>,
+) -> Line<N> {
+    let (s, t) = closest_points_line_line_parameters(orig1, dir1, orig2, dir2);
+    (*orig1 + *dir1 * s, *orig2 + *dir2 * t)
+}
 
 
+//-----------------test cases-------------------
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn test_cmp_points() {
-        assert_eq!(Point3::new(1.,2.,3.).instinct_cmp(&Point3::new(4.,5.,3.)), Some(Ordering::Equal));
-        assert_eq!(Point3::new(1.,2.,3.00000001).instinct_cmp(&Point3::new(4.,5.,3.)), Some(Ordering::Greater));
-        assert_eq!(Point3::new(1.,2.,2.999999).instinct_cmp(&Point3::new(4.,5.,3.)), Some(Ordering::Less));
+        assert_eq!(Point3::new(1.,2.,3.).instinct_cmp(&Point3::new(4.,5.,3.)), Ordering::Equal);
+        assert_eq!(Point3::new(1.,2.,3.00000001).instinct_cmp(&Point3::new(4.,5.,3.)), Ordering::Greater);
+        assert_eq!(Point3::new(1.,2.,2.999999).instinct_cmp(&Point3::new(4.,5.,3.)), Ordering::Less);
     }
 
     #[test]
     fn test_cmp_point_line() {
         let line = (Point3::new(1., 2., 3.), Point3::new(5., 8., 9.));
         let mut point = Point3::new(1., 2., 3.);
-        assert_eq!(line.instinct_cmp(&point), Some(Ordering::Equal));
+        assert_eq!(line.instinct_cmp(&point), Ordering::Equal);
         point = Point3::new(3., 5., 6.);
-        assert_eq!(line.instinct_cmp(&point), Some(Ordering::Equal));
+        assert_eq!(line.instinct_cmp(&point), Ordering::Equal);
         point = Point3::new(3., 5., 6.0000001);
-        assert_eq!(line.instinct_cmp(&point), Some(Ordering::Greater));
+        assert_eq!(line.instinct_cmp(&point), Ordering::Greater);
         point = Point3::new(3., 5., 5.9999999);
-        assert_eq!(line.instinct_cmp(&point), Some(Ordering::Less));
+        assert_eq!(line.instinct_cmp(&point), Ordering::Less);
     }
 
     #[test]
     fn test_cmp_point_plane() {
         let plane = (Point3::new(1., 2., 3.), Point3::new(1.4, 4., 6.), Point3::new(0., 0., 0.));
         let mut point = Point3::new(0., 0., 0.);
-        assert_eq!(plane.instinct_cmp(&point), Some(Ordering::Equal));
+        assert_eq!(plane.instinct_cmp(&point), Ordering::Equal);
         point = Point3::new(0.8, 2., 3.);
-        assert_eq!(plane.instinct_cmp(&point), Some(Ordering::Equal));
+        assert_eq!(plane.instinct_cmp(&point), Ordering::Equal);
         point = Point3::new(0.8, 2., 2.999999);
-        assert_eq!(plane.instinct_cmp(&point), Some(Ordering::Greater));
+        assert_eq!(plane.instinct_cmp(&point), Ordering::Greater);
         point = Point3::new(0.8, 2., 3.000001);
-        assert_eq!(plane.instinct_cmp(&point), Some(Ordering::Less));
+        assert_eq!(plane.instinct_cmp(&point), Ordering::Less);
     }
 
     #[test]
     fn test_cmp_lines() {
         let a = (Point3::new(1., 2., 3.), Point3::new(5., 8., 9.));
         let b = (Point3::new(1., 2., 3.), Point3::new(5., 8., 9.));
-        assert_eq!(a.instinct_cmp(&b), Some(Ordering::Equal));
+        assert_eq!(a.instinct_cmp(&b), Ordering::Equal);
     }
 }
 
