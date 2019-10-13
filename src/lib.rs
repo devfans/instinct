@@ -1,5 +1,5 @@
 use nalgebra::{self as na, *};
-use std::cmp::{PartialOrd, Ordering};
+use std::cmp::Ordering;
 
 pub type Line<N> = (Point3<N>, Point3<N>);
 pub type LineRef<'a, N> = (&'a Point3<N>, &'a Point3<N>);
@@ -105,7 +105,69 @@ pub trait InstinctOrd<Rhs> {
     fn instinct_cmp_ext(&self, other: &Rhs) -> Option<Ordering>;
 }
 
+pub enum InstinctObject<'a, 'b, N: RealField> {
+    Point(&'a Point3<N>),
+    Line(&'a(Point3<N>, Point3<N>)),
+    LineRef(&'a(&'b Point3<N>, &'b Point3<N>)),
+    Plane(&'a(Point3<N>, Point3<N>, Point3<N>)),
+    PlaneRef(&'a(&'b Point3<N>, &'b Point3<N>, &'b Point3<N>))
+}
+
+/*
+impl<'a, 'b, N: RealField> InstinctOrd<InstinctObject<'a, 'b, N>> for InstinctObject<'a, 'b, N> {
+    fn instinct_cmp(&self, other: &InstinctObject<'a, 'b, N>) -> Ordering {
+        match self {
+            InstinctObject::Point( point ) => {
+            },
+        }
+    }
+    fn instinct_cmp_ext(&self, other: &InstinctObject<'a, 'b, N>) -> Option<Ordering> {
+    }
+}
+*/
+
+impl<'a, 'b, N: RealField> From<&'a Point3<N>> for InstinctObject<'a, 'b, N> {
+    fn from(item: &'a Point3<N>) -> InstinctObject<'a, 'b, N> {
+        InstinctObject::Point(item)
+    }
+}
+
+impl<'a, 'b, N: RealField> From<&'a (Point3<N>, Point3<N>)> for InstinctObject<'a, 'b, N> {
+    fn from(item: &'a (Point3<N>, Point3<N>)) -> InstinctObject<'a, 'b, N> {
+        InstinctObject::Line(item)
+    }
+}
+
+impl<'a, 'b, N: RealField> From<&'a (&'b Point3<N>, &'b Point3<N>)> for InstinctObject<'a, 'b, N> {
+    fn from(item: &'a (&'b Point3<N>, &'b Point3<N>)) -> InstinctObject<'a, 'b, N> {
+        InstinctObject::LineRef(item)
+    }
+}
+
+impl<'a, 'b, N: RealField> From<&'a (Point3<N>, Point3<N>, Point3<N>)> for InstinctObject<'a, 'b, N> {
+    fn from(item: &'a (Point3<N>, Point3<N>, Point3<N>)) -> InstinctObject<'a, 'b, N> {
+        InstinctObject::Plane(item)
+    }
+}
+
+impl<'a, 'b, N: RealField> From<&'a (&'b Point3<N>, &'b Point3<N>, &'b Point3<N>)> for InstinctObject<'a, 'b, N> {
+    fn from(item: &'a (&'b Point3<N>, &'b Point3<N>, &'b Point3<N>)) -> InstinctObject<'a, 'b, N> {
+        InstinctObject::PlaneRef(item)
+    }
+}
+
+#[macro_export]
+macro_rules! instinct_cmp {
+    () => {
+        {
+         let col: Vec<InstinctObject<f32>> = Vec::new();
+         col
+        }
+    }
+}
+
 /// Check if same point
+#[macro_export]
 macro_rules! same_point {
     ($self: expr, $other: expr) => {
         $self.x.instinct_eq(&$other.x) &&
@@ -118,6 +180,7 @@ macro_rules! same_point {
 }
 
 /// Check if points share same  XY plane
+#[macro_export]
 macro_rules! same_z {
     ($a: expr, $b: expr, $c: expr) => {
         $a.z.instinct_eq(&$b.z) &&
@@ -130,6 +193,7 @@ macro_rules! same_z {
 }
 
 /// Sort two points in ndc
+#[macro_export]
 macro_rules! sort_points {
     ($self: expr, $other: expr) => {
         if same_point!($self, $other) {
@@ -140,6 +204,7 @@ macro_rules! sort_points {
     }
 }
 /// Check if two line is parallel
+#[macro_export]
 macro_rules! is_lines_parallel {
     ($a: expr, $b: expr, $c: expr, $d: expr) => {
         {
@@ -157,6 +222,7 @@ macro_rules! is_lines_parallel {
 }
 
 /// Check if point is in line
+#[macro_export]
 macro_rules! point_in_line {
     ($p: expr, $l0: expr, $l1: expr) => {
         if same_point!($p, $l0) || same_point!($p, $l1) {
@@ -174,6 +240,7 @@ macro_rules! point_in_line {
 }
 
 /// Sort points in a line
+#[macro_export]
 macro_rules! sort_line_points {
     ($a: expr, $b: expr, $c: expr) => {
         {
@@ -194,6 +261,7 @@ macro_rules! sort_line_points {
 }
 
 /// Check if a plane is represented by three points
+#[macro_export]
 macro_rules! is_plane {
     ($p0: expr, $p1: expr, $p2: expr) => {
         if same_point!($p0, $p1) {
@@ -208,6 +276,7 @@ macro_rules! is_plane {
 }
 
 /// Check if a point is in the plane represented by three points
+#[macro_export]
 macro_rules! point_in_plane {
     ($p: expr, $a: expr, $b: expr, $c: expr) => {
         if same_point!($p, $a) {
@@ -227,6 +296,7 @@ macro_rules! point_in_plane {
 }
 
 /// Sort point and plane represented by three points in ndc
+#[macro_export]
 macro_rules! sort_point_and_plane {
     ($p: expr, $a: expr, $b: expr, $c: expr) => {
         if same_point!($p, $a) {
@@ -254,6 +324,7 @@ macro_rules! sort_point_and_plane {
 }
 
 /// Sort point and line in ndc
+#[macro_export]
 macro_rules! sort_point_and_line {
     ($p: expr, $l0: expr, $l1: expr) => {
         (($l1.z - $l0.z) * ($p.y - $l0.y) - ($l1.y - $l0.y) * ($p.z - $l0.z))
@@ -265,6 +336,7 @@ macro_rules! sort_point_and_line {
 }
 
 /// Get normal vector of two lines
+#[macro_export]
 macro_rules! get_lines_normal {
     ($a: expr, $b: expr, $c: expr, $d: expr) => {
         {
@@ -282,6 +354,7 @@ macro_rules! get_lines_normal {
 }
 
 /// Get normal vector of point and a plane
+#[macro_export]
 macro_rules! get_point_plane_normal {
     ($p: expr, $a: expr, $b: expr, $c: expr) => {
         {
@@ -300,6 +373,7 @@ macro_rules! get_point_plane_normal {
 
 /// Get joint of line and a plane, when line go through a plane and points on the different side of
 /// the plane
+#[macro_export]
 macro_rules! get_line_plane_joint {
     ($l0 :expr, $l1: expr, $p0: expr, $p1: expr, $p2: expr) => {
         {
@@ -324,6 +398,7 @@ macro_rules! get_line_plane_joint {
 
 /// Get joint of line and a plane, when line go through a plane and points on the same side of
 /// the plane
+#[macro_export]
 macro_rules! get_side_line_plane_joint {
     ($l0 :expr, $l1: expr, $p0: expr, $p1: expr, $p2: expr) => {
         {
@@ -350,6 +425,7 @@ macro_rules! get_side_line_plane_joint {
 
 
 /// Check if point is in side a triangle, when the point is on the same plane with the triangle
+#[macro_export]
 macro_rules! point_in_triangle {
     ($point: expr, $p0: expr, $p1: expr, $p2: expr) => {
         {
@@ -385,6 +461,7 @@ macro_rules! point_in_triangle {
 
 /// sort line and triangle, when points of line are distributed on both side of the plane but the line
 /// does not cross the polygon
+#[macro_export]
 macro_rules! sort_line_and_triangle {
     ($l0 :expr, $l1: expr, $p0: expr, $p1: expr, $p2: expr) => {
         {
@@ -432,6 +509,7 @@ macro_rules! sort_line_and_triangle {
 }
 
 /// sort two triangles, no cross happens and no parellel happens
+#[macro_export]
 macro_rules! sort_triangles {
     ($a: expr, $b: expr, $c: expr, $d: expr, $e: expr, $f: expr) => {
         {
@@ -473,6 +551,7 @@ macro_rules! sort_triangles {
 }
  
 /// Reverse Option<Ordering>
+#[macro_export]
 macro_rules! reverse_cmp_ext {
     ($self: expr, $other: expr) => {
         match $other.instinct_cmp_ext($self) {
@@ -1274,6 +1353,18 @@ mod tests {
         let t2 = p2 + d2*t;
         assert_eq!(t1, Point3::new(0., 0., 0.));
         assert_eq!(t2, Point3::new(0., 32., 0.));
+    }
+
+    #[test]
+    fn test_instinct_object() {
+        let mut cmp = instinct_cmp!();
+        let point: &Point3<f32> = &Point3::new(0., 0., 0.);
+        let point2: Point3<f32> = Point3::new(0., 0., 0.);
+        let point3: Point3<f32> = Point3::new(0., 0., 0.);
+        let line = &(point2, point3);
+        cmp.push(point.into());
+        cmp.push(line.into());
+        // cmp.sort_by(|a, b| a.instinct_cmp(b));
     }
 }
 

@@ -1,6 +1,6 @@
 [package]
 name = "instinct"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["devfans <stefanliu@outlook.com>"]
 edition = "2018"
 description = "Sorting of polygons, lines and points in 3D world projection"

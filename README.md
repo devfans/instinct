@@ -1,4 +1,4 @@
-# dragon
+# instinct
 Sorting of polygons, lines and points in 3D world projection.
 
 [![Build Status][travis-image]][travis-url]  [![Crates.io][s2]][ci]
