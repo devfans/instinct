@@ -66,7 +66,7 @@ impl<'a, N: RealField> InstinctUtils for N {
         //TODO: NaN cmp can appear here? 
         if self.instinct_eq(other) {
             Ordering::Equal
-        } else if self < other {
+        } else if self > other {
             Ordering::Greater
         } else {
             Ordering::Less
@@ -297,6 +297,180 @@ macro_rules! get_point_plane_normal {
         get_point_plane_normal!($p, $plane.0, $plane.1, $plane.2)
     }
 }
+
+/// Get joint of line and a plane, when line go through a plane and points on the different side of
+/// the plane
+macro_rules! get_line_plane_joint {
+    ($l0 :expr, $l1: expr, $p0: expr, $p1: expr, $p2: expr) => {
+        {
+            let normal_0 = get_point_plane_normal!($l0, $p0, $p1, $p2);
+            let normal_1 = get_point_plane_normal!($l1, $p0, $p1, $p2);
+            let distance_0_plane = normal_0.norm();
+            let distance_1_plane = normal_1.norm();
+            if distance_0_plane.instinct_zero() {
+                $l0
+            } else if distance_1_plane.instinct_zero() {
+                $l1
+            } else {
+                $l0 + ($l1.coords - $l0.coords) * distance_0_plane /
+                    (distance_0_plane + distance_1_plane)
+            }
+        }
+    };
+    ($line: expr, $plane: expr) => {
+        get_line_plane_joint!($line.0, $line.1, $plane.0, $plane.1, $plane.2)
+    }
+}
+
+/// Get joint of line and a plane, when line go through a plane and points on the same side of
+/// the plane
+macro_rules! get_side_line_plane_joint {
+    ($l0 :expr, $l1: expr, $p0: expr, $p1: expr, $p2: expr) => {
+        {
+            let normal_0 = get_point_plane_normal!($l0, $p0, $p1, $p2);
+            let normal_1 = get_point_plane_normal!($l1, $p0, $p1, $p2);
+
+            let distance_0_plane = normal_0.norm();
+            let distance_1_plane = normal_1.norm();
+            if distance_0_plane.instinct_zero() {
+                $l0
+            } else if distance_1_plane.instinct_zero() {
+                $l1
+            } else if distance_0_plane < distance_1_plane {
+                $l0 - ($l1.coords - $l0.coords) * distance_1_plane / distance_0_plane
+            } else {
+                $l1 - ($l0.coords - $l1.coords) * distance_0_plane / distance_1_plane
+            }
+        }
+    };
+    ($line: expr, $plane: expr) => {
+        get_line_plane_joint!($line.0, $line.1, $plane.0, $plane.1, $plane.2)
+    }
+}
+
+
+/// Check if point is in side a triangle, when the point is on the same plane with the triangle
+macro_rules! point_in_triangle {
+    ($point: expr, $p0: expr, $p1: expr, $p2: expr) => {
+        {
+            // normal of plane
+            let normal_plane = ($p1.coords - $p0.coords).cross(&(
+                $p2.coords - $p0.coords)).normalize();
+
+            let cmp_normal_0 = ($p0.coords - $point.coords).cross(&normal_plane);
+            let cmp_0_1 = ($p1.coords - $point.coords).dot(&cmp_normal_0);
+            let cmp_0_2 = ($p2.coords - $point.coords).dot(&cmp_normal_0);
+            if !cmp_0_1.instinct_zero() && !cmp_0_2.instinct_zero() &&
+                cmp_0_1.is_positive() == cmp_0_2.is_negative() { 
+                let cmp_normal_1 = ($p1.coords - $point.coords).cross(&normal_plane);
+                let cmp_1_0 = ($p0.coords - $point.coords).dot(&cmp_normal_1);
+                let cmp_1_2 = ($p2.coords - $point.coords).dot(&cmp_normal_1);
+                if !cmp_1_0.instinct_zero() && !cmp_1_2.instinct_zero() &&
+                    cmp_1_0.is_positive() == cmp_1_2.is_negative() { 
+                    // Joint is in side the triangle
+                    true
+                } else {
+                    false
+                }
+            } else {
+                false
+            }
+        }
+
+    };
+    ($point: expr, $plane: expr) => {
+        point_in_triangle!($point, $plane.0, $plane.1, $plane.2)
+    }
+}
+
+/// sort line and triangle, when points of line are distributed on both side of the plane but the line
+/// does not cross the polygon
+macro_rules! sort_line_and_triangle {
+    ($l0 :expr, $l1: expr, $p0: expr, $p1: expr, $p2: expr) => {
+        {
+            let n_01 = get_lines_normal!($l0, $l1, $p0, $p1).z;
+            let n_02 = get_lines_normal!($l0, $l1, $p0, $p2).z;
+            if n_01.instinct_zero() && n_02.instinct_zero() {
+                Ordering::Equal
+            } else {
+                let n_12 = get_lines_normal!($l0, $l1, $p1, $p2).z;
+                let mut check: i8 = 0;
+                if !n_01.instinct_zero() {
+                    if n_01.is_positive() {
+                        check += 1;
+                    } else {
+                        check -= 1;
+                    }
+                }
+                if !n_02.instinct_zero() {
+                    if n_02.is_positive() {
+                        check += 1;
+                    } else {
+                        check -= 1;
+                    }
+                }
+                if !n_12.instinct_zero() {
+                    if n_12.is_positive() {
+                        check += 1;
+                    } else {
+                        check -= 1;
+                    }
+                }
+                if check > 1 {
+                    Ordering::Less
+                } else if check < -1 {
+                    Ordering::Greater
+                } else {
+                    Ordering::Equal
+                }
+            }
+        }
+    };
+    ($line: expr, $plane: expr) => {
+        sort_line_and_triangle!($line.0, $line.1, $plane.0, $plane.1, $plane.2)
+    }
+}
+
+/// sort two triangles, no cross happens and no parellel happens
+macro_rules! sort_triangles {
+    ($a: expr, $b: expr, $c: expr, $d: expr, $e: expr, $f: expr) => {
+        {
+            let o_ab = sort_line_and_triangle!($a, $b, $d, $e, $f);
+            let o_ac = sort_line_and_triangle!($a, $c, $d, $e, $f);
+            if o_ab == o_ac {
+                o_ab
+            } else {
+                let o_bc = sort_line_and_triangle!($b, $c, $d, $e, $f);
+                let mut check: i8 = 0;
+                match o_ab {
+                    Ordering::Greater => check += 1,
+                    Ordering::Less => check -= 1,
+                    _ => {},
+                }
+                match o_ac {
+                    Ordering::Greater => check += 1,
+                    Ordering::Less => check -= 1,
+                    _ => {},
+                }
+                match o_bc {
+                    Ordering::Greater => check += 1,
+                    Ordering::Less => check -= 1,
+                    _ => {},
+                }
+                if check > 1 {
+                    Ordering::Greater
+                } else if check < -1 {
+                    Ordering::Less
+                } else {
+                    Ordering::Equal
+                }
+            }
+        }
+    };
+    ($a: expr, $b: expr) => {
+        sort_triangles!($a.0, $a.1, $a.2, $b.0, $b.1, $b.2)
+    }
+}
  
 /// Reverse Option<Ordering>
 macro_rules! reverse_cmp_ext {
@@ -334,10 +508,15 @@ impl<'a, N: RealField> InstinctOrd<LineRef<'a, N>> for Point3<N> {
             let v = self.z;
             let min = other.0.z.min(other.1.z);
             let max = other.0.z.max(other.1.z);
-            if v.instinct_ge(&max) {
+            /*
+            if v.instinct_eq(&min) || v.instinct_eq(&min) {
+                return Ordering::Equal;
+            }
+            */
+            if v.instinct_gt(&max) {
                 return Ordering::Greater;
             }
-            if v.instinct_le(&min) {
+            if v.instinct_lt(&min) {
                 return Ordering::Less;
             }
 
@@ -392,10 +571,15 @@ impl<'a, N: RealField> InstinctOrd<PlaneRef<'a, N>> for Point3<N> {
         let v = self.z;
         let min = other.0.z.min(other.1.z).min(other.2.z);
         let max = other.0.z.max(other.1.z).max(other.2.z);
-        if v.instinct_ge(&max) {
+        /*
+        if v.instinct_eq(&max) || v.instinct_eq(&min) {
+            return Ordering::Equal;
+        }
+        */
+        if v.instinct_gt(&max) {
             return Ordering::Greater;
         }
-        if v.instinct_le(&min) {
+        if v.instinct_lt(&min) {
             return Ordering::Less;
         }
 
@@ -527,12 +711,16 @@ impl<'a, N: RealField> InstinctOrd<LineRef<'a, N>> for LineRef<'a, N> {
         let o_1 = sort_point_and_line!(self.1, other);
 
         if point_in_line!(self.0, other) || o_0 == Ordering::Equal {
+            println!("{}", 1);
             self.1.instinct_cmp(other)
         } else if point_in_line!(self.1, other) || o_1 == Ordering::Equal {
+            println!("{}", 2);
             self.0.instinct_cmp(other)
         } else if o_0 == o_1 {
+            println!("{}", 3);
             o_0
         } else {
+            println!("{}", 4);
             get_lines_normal!(self, other).z.instinct_delta_ord().reverse()
         }
     }
@@ -631,8 +819,31 @@ impl<'a, N: RealField> InstinctOrd<PlaneRef<'a, N>> for LineRef<'a, N> {
                         normal_1.z.instinct_delta_ord().reverse()
                     }
                 } else {
-                    // TODO: Finish this
-                    Ordering::Equal
+                    let distance_0_plane = normal_0.norm();
+                    let distance_1_plane = normal_1.norm();
+
+                    // joint of line and plane
+                    let joint = self.0 + (self.1.coords - self.0.coords) * distance_0_plane /
+                        (distance_0_plane + distance_1_plane);
+                    // normal of plane
+                    let normal_plane = (other.1.coords - other.0.coords).cross(&(
+                            other.2.coords - other.0.coords)).normalize();
+
+                    let cmp_normal_0 = (other.0.coords - joint.coords).cross(&normal_plane);
+                    let cmp_0_1 = (other.1.coords - joint.coords).dot(&cmp_normal_0);
+                    let cmp_0_2 = (other.2.coords - joint.coords).dot(&cmp_normal_0);
+                    if !cmp_0_1.instinct_zero() && !cmp_0_2.instinct_zero() &&
+                        cmp_0_1.is_positive() == cmp_0_2.is_negative() { 
+                        let cmp_normal_1 = (other.1.coords - joint.coords).cross(&normal_plane);
+                        let cmp_1_0 = (other.0.coords - joint.coords).dot(&cmp_normal_1);
+                        let cmp_1_2 = (other.2.coords - joint.coords).dot(&cmp_normal_1);
+                        if !cmp_1_0.instinct_zero() && !cmp_1_2.instinct_zero() &&
+                            cmp_1_0.is_positive() == cmp_1_2.is_negative() { 
+                            // Joint is in the triangle
+                            return Ordering::Equal;
+                        }
+                    }
+                    sort_line_and_triangle!(self, other)
                 }
             }
         }
@@ -735,6 +946,144 @@ impl<N: RealField> InstinctOrd<Line<N>> for Plane<N> {
 /// Compare two planes
 impl<'a, N: RealField> InstinctOrd<PlaneRef<'a, N>> for PlaneRef<'a, N> {
     fn instinct_cmp(&self, other: &PlaneRef<'a, N>) -> Ordering {
+            let v_min = self.0.z.min(self.1.z).min(self.2.z);
+            let v_max = self.0.z.max(self.1.z).max(self.2.z);
+            let min = other.0.z.min(other.1.z).min(other.2.z);
+            let max = other.0.z.max(other.1.z).max(other.2.z);
+            if v_min.instinct_eq(&max) {
+                if v_max > max || min < v_min {
+                    return Ordering::Greater;
+                }
+            } else if v_min > max {
+                return Ordering::Greater;
+            }
+            
+            if v_max.instinct_eq(&min) {
+                if v_min < max || max > v_max {
+                    return Ordering::Less;
+                }
+            } else if v_max < min {
+                return Ordering::Less;
+            }
+
+            if !is_plane!(other) {
+                let line = sort_line_points!(other);
+                (line[0], line[2]).instinct_cmp(self).reverse()
+            } else if !is_plane!(self) {
+                let line = sort_line_points!(self);
+                (line[0], line[2]).instinct_cmp(other)
+            } else {
+                macro_rules! check_normals_same_side {
+                    ($a: expr, $b: expr) => {
+                        if $a.dot(&$b).is_positive() {
+                            if $a.z.abs() > $b.z.abs() {
+                                return $a.z.instinct_delta_ord().reverse();
+                            } else {
+                                return $b.z.instinct_delta_ord().reverse();
+                            }
+                        }
+                    };
+                    ($a: expr, $b: expr, $c: expr) => {
+                        if $a.dot(&$b).is_positive() && $a.dot(&$c).is_positive() {
+                            if $a.z.abs() > $b.z.abs() && $a.z.abs() > $c.z.abs() {
+                                return $a.z.instinct_delta_ord().reverse();
+                            } else if $b.z.abs() > $c.z.abs() {
+                                return $b.z.instinct_delta_ord().reverse();
+                            } else {
+                                return $c.z.instinct_delta_ord().reverse();
+                            }
+                        }
+                    }
+                }
+
+                macro_rules! check_cross_side {
+                    ($a: expr, $na: expr, $b: expr, $nb: expr, $other: expr) => {
+                        {
+                            let joint = $a + ($b.coords - $a.coords) * $na / ($na + $nb);
+                            if point_in_triangle!(joint, $other) {
+                                return Ordering::Equal;
+                            } 
+                        }
+                    }
+                }
+
+                macro_rules! check_cross_or_same_side {
+                    ($a: expr, $b: expr) => {
+                            let normal_0 = get_point_plane_normal!($a.0, $b);
+                            let normal_1 = get_point_plane_normal!($a.1, $b);
+                            let normal_2 = get_point_plane_normal!($a.2, $b);
+                            let n_0 = normal_0.norm();
+                            let n_1 = normal_1.norm();
+                            let n_2 = normal_2.norm();
+
+                            if n_0.instinct_zero() {
+                                if n_1.instinct_zero() {
+                                    if n_2.instinct_zero() {
+                                        return Ordering::Equal;
+                                    } else {
+                                        return normal_2.z.instinct_delta_ord().reverse();
+                                    }
+                                } else if n_2.instinct_zero() {
+                                    return normal_1.z.instinct_delta_ord().reverse();
+                                } else {
+                                    // Check if 1, 2 on same side of other plane
+                                    check_normals_same_side!(normal_1, normal_2);
+                                    // Check if 1, 2 cross the triangle
+                                    check_cross_side!($a.1, n_1, $a.2, n_2, $b);
+                                }
+                            } else if n_1.instinct_zero() {
+                                if n_2.instinct_zero() {
+                                    return normal_0.z.instinct_delta_ord().reverse();
+                                } else {
+                                    // check if 0, 2 on same side of other plane
+                                    check_normals_same_side!(normal_0, normal_2);
+                                    // check if 0, 2 cross the triangle
+                                    check_cross_side!($a.0, n_0, $a.2, n_2, $b);
+                                }
+                            } else if n_2.instinct_zero() {
+                                // check if 0, 1 on same side of other plane
+                                check_normals_same_side!(normal_0, normal_1);
+                                // check if 0, 1 cross the triangle
+                                check_cross_side!($a.0, n_0, $a.1, n_1, $b);
+                            } else {
+                                // check if 0, 1, 2 on same side of other plane
+                                // check_normals_same_side!(normal_0, normal_1, normal_2);
+                                if normal_0.dot(&normal_1).is_positive() {
+                                    if normal_0.dot(&normal_2).is_positive() {
+                                        if normal_0.z.abs() > normal_1.z.abs()
+                                            && normal_0.z.abs() > normal_2.z.abs() {
+                                            return normal_0.z.instinct_delta_ord().reverse();
+                                        } else if normal_1.z.abs() > normal_2.z.abs() {
+                                            return normal_1.z.instinct_delta_ord().reverse();
+                                        } else {
+                                            return normal_2.z.instinct_delta_ord().reverse();
+                                        }
+                                    } else {
+                                        // check if 0, 2 cross the triangle
+                                        check_cross_side!($a.0, n_0, $a.2, n_2, $b);
+                                        // check if 1, 2 cross the triangle
+                                        check_cross_side!($a.1, n_1, $a.2, n_2, $b);
+                                    }
+                                } else if normal_0.dot(&normal_2).is_positive() {
+                                    // check if 0, 1 cross the triangle
+                                    check_cross_side!($a.0, n_0, $a.1, n_1, $b);
+                                    // check if 1, 2 cross the triangle
+                                    check_cross_side!($a.1, n_1, $a.2, n_2, $b);
+                                } else {
+                                    // check if 0, 1 cross the triangle
+                                    check_cross_side!($a.0, n_0, $a.1, n_1, $b);
+                                    // check if 0, 2 cross the triangle
+                                    check_cross_side!($a.0, n_0, $a.2, n_2, $b);
+                                }
+                            }
+                    }
+                }
+                check_cross_or_same_side!(self, other);
+                check_cross_or_same_side!(other, self);
+
+                // Sort two planes
+                sort_triangles!(self, other)
+            }
     }
     fn instinct_cmp_ext(&self, other: &PlaneRef<'a, N>) -> Option<Ordering> {
         if !is_plane!(self) {
