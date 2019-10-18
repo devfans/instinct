@@ -113,18 +113,50 @@ pub enum InstinctObject<'a, 'b, N: RealField> {
     PlaneRef(&'a(&'b Point3<N>, &'b Point3<N>, &'b Point3<N>))
 }
 
-/*
 impl<'a, 'b, N: RealField> InstinctOrd<InstinctObject<'a, 'b, N>> for InstinctObject<'a, 'b, N> {
     fn instinct_cmp(&self, other: &InstinctObject<'a, 'b, N>) -> Ordering {
+        macro_rules! cmp {
+            ($self: expr) => {
+                match other {
+                    InstinctObject::Point( o ) => $self.instinct_cmp(*o),
+                    InstinctObject::Line( o ) => $self.instinct_cmp(*o),
+                    InstinctObject::LineRef( o ) => $self.instinct_cmp(*o),
+                    InstinctObject::Plane( o ) => $self.instinct_cmp(*o),
+                    InstinctObject::PlaneRef( o ) => $self.instinct_cmp(*o),
+                }
+            }
+        }
         match self {
-            InstinctObject::Point( point ) => {
-            },
+            InstinctObject::Point( s ) => cmp!(s),
+            InstinctObject::Line( s ) => cmp!(s),
+            InstinctObject::LineRef( s ) => cmp!(s),
+            InstinctObject::Plane( s ) => cmp!(s),
+            InstinctObject::PlaneRef( s ) => cmp!(s),
         }
     }
+
     fn instinct_cmp_ext(&self, other: &InstinctObject<'a, 'b, N>) -> Option<Ordering> {
+        macro_rules! cmp {
+            ($self: expr) => {
+                match other {
+                    InstinctObject::Point( o ) => $self.instinct_cmp_ext(*o),
+                    InstinctObject::Line( o ) => $self.instinct_cmp_ext(*o),
+                    InstinctObject::LineRef( o ) => $self.instinct_cmp_ext(*o),
+                    InstinctObject::Plane( o ) => $self.instinct_cmp_ext(*o),
+                    InstinctObject::PlaneRef( o ) => $self.instinct_cmp_ext(*o),
+                }
+            }
+        }
+        match self {
+            InstinctObject::Point( s ) => cmp!(s),
+            InstinctObject::Line( s ) => cmp!(s),
+            InstinctObject::LineRef( s ) => cmp!(s),
+            InstinctObject::Plane( s ) => cmp!(s),
+            InstinctObject::PlaneRef( s ) => cmp!(s),
+        }
+
     }
 }
-*/
 
 impl<'a, 'b, N: RealField> From<&'a Point3<N>> for InstinctObject<'a, 'b, N> {
     fn from(item: &'a Point3<N>) -> InstinctObject<'a, 'b, N> {
@@ -1364,7 +1396,15 @@ mod tests {
         let line = &(point2, point3);
         cmp.push(point.into());
         cmp.push(line.into());
-        // cmp.sort_by(|a, b| a.instinct_cmp(b));
+        cmp.sort_unstable_by(|a, b| a.instinct_cmp(b));
+    }
+
+    #[test]
+    fn test_misc() {
+        let mut v = vec!(1,2,8,7,4,5,0,2,8,4,32,3,2,3,3,4,3,5,6,7,8,2,3,1,2,1);
+        v.sort_unstable_by(|a, b| a.cmp(b));
+        println!("{:?}", v);
+        assert!(false);
     }
 }
 
